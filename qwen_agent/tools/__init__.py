@@ -20,7 +20,9 @@ from .extract_doc_vocabulary import ExtractDocVocabulary
 from .image_gen import ImageGen
 from .python_executor import PythonExecutor
 from .retrieval import Retrieval
+from .image_rotate_qwen3vl import ImageRotateToolQwen3VL
 from .image_zoom_in_qwen3vl import ImageZoomInToolQwen3VL
+from .image_mineru_parser import MinerUParser
 from .image_search import ImageSearch
 from .search_tools import FrontPageSearch, HybridSearch, KeywordSearch, VectorSearch
 from .simple_doc_parser import SimpleDocParser
@@ -40,6 +42,8 @@ __all__ = [
     'Storage',
     'Retrieval',
     'ImageZoomInToolQwen3VL',
+    'ImageRotateQwen3VL',
+    'MinerUParser',
     'ImageSearch',
     'WebExtractor',
     'SimpleDocParser',

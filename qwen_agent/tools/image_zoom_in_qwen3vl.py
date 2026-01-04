@@ -31,11 +31,15 @@ from qwen_agent.utils.utils import extract_images_from_messages
 @register_tool('image_zoom_in_tool')
 class ImageZoomInToolQwen3VL(BaseToolWithFileAccess):
 
-    description = 'Zoom in on a specific region of an image by cropping it based on a bounding box (bbox) and an optional object label'
+    description = 'Zoom in on a specific region of an image by cropping it based on a bounding box (bbox) and an optional object label, the index of the image to be cropped should also be provided.'
     parameters = {
         'type': 'object',
         'properties': {
-            'bbox_2d': {
+            'img_idx': {
+                'type': 'number',
+                'description': 'The index of the zoomed-in image (starting from 0, including images from user inputs and tool-calling returns)'
+            },
+            'bbox': {
                 'type':
                     'array',
                 'items': {
@@ -52,12 +56,8 @@ class ImageZoomInToolQwen3VL(BaseToolWithFileAccess):
                 'type': 'string',
                 'description': 'The name or label of the object in the specified bounding box'
             },
-            'img_idx': {
-                'type': 'number',
-                'description': 'The index of the zoomed-in image (starting from 0)'
-            }
         },
-        'required': ['bbox_2d', 'label', 'img_idx']
+        'required': ['img_idx', 'bbox', 'label']
     }
 
     # Image resizing functions (copied from qwen-vl-utils)
@@ -129,7 +129,7 @@ class ImageZoomInToolQwen3VL(BaseToolWithFileAccess):
         params = self._verify_json_format_args(params)
 
         img_idx = params['img_idx']
-        bbox = params['bbox_2d']
+        bbox = params['bbox']
         images = extract_images_from_messages(kwargs.get('messages', []))
         os.makedirs(self.work_dir, exist_ok=True)
 
