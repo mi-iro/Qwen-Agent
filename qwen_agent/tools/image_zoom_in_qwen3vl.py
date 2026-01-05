@@ -31,13 +31,13 @@ from qwen_agent.utils.utils import extract_images_from_messages
 @register_tool('image_zoom_in_tool')
 class ImageZoomInToolQwen3VL(BaseToolWithFileAccess):
 
-    description = 'Zoom in on a specific region of an image by cropping it based on a bounding box (bbox) and an optional object label, the index of the image to be cropped should also be provided.'
+    description = 'Zoom in on a specific region of an image by cropping it based on a bounding box (bbox) and an optional object label.'
     parameters = {
         'type': 'object',
         'properties': {
             'img_idx': {
                 'type': 'number',
-                'description': 'The index of the zoomed-in image (starting from 0, including images from user inputs and tool-calling returns)'
+                'description': 'The index of the zoomed-in image (always 0, indicting the page image from the user)'
             },
             'bbox': {
                 'type':
@@ -50,7 +50,7 @@ class ImageZoomInToolQwen3VL(BaseToolWithFileAccess):
                 'maxItems':
                     4,
                 'description':
-                    'The bbox specified as [x1, y1, x2, y2] in 0-1000 coordinates, relative to the zoomed-in image.'
+                    'The bbox specified as [x1, y1, x2, y2] in 0-1000 coordinates, relative to the page image from the user.'
             },
             'label': {
                 'type': 'string',

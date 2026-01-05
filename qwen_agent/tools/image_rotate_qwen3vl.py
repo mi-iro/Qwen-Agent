@@ -22,7 +22,7 @@ class ImageRotateToolQwen3VL(BaseToolWithFileAccess):
         'properties': {
             'img_idx': {
                 'type': 'number',
-                'description': 'The index of the image to rotate (starting from 0, including images from user inputs and tool-calling returns)'
+                'description': 'The index of the zoomed-in image (always 0, indicting the page image from the user)'
             },
             'angle': {
                 'type': 'number',
