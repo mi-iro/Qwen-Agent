@@ -50,7 +50,7 @@ class ImageZoomInToolQwen3VL(BaseToolWithFileAccess):
                 'maxItems':
                     4,
                 'description':
-                    'The bounding box of the region to zoom in, as [x1, y1, x2, y2], where (x1, y1) is the top-left corner and (x2, y2) is the bottom-right corner'
+                    'The bbox specified as [x1, y1, x2, y2] in 0-1000 coordinates, relative to the zoomed-in image.'
             },
             'label': {
                 'type': 'string',
