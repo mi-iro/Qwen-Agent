@@ -22,6 +22,7 @@ from .python_executor import PythonExecutor
 from .retrieval import Retrieval
 from .image_rotate_qwen3vl import ImageRotateToolQwen3VL
 from .image_zoom_in_qwen3vl import ImageZoomInToolQwen3VL
+from .image_zoom_and_ocr_tool import ImageZoomOCRTool
 # from .image_mineru_parser import MinerUParser
 from .image_search import ImageSearch
 from .search_tools import FrontPageSearch, HybridSearch, KeywordSearch, VectorSearch
