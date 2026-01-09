@@ -103,10 +103,16 @@ def extract_relevant_elements_with_vlm(image_path, mineru_layout, user_query, ag
 
     last_response = ""
     response_plain_text = ''
+    
+    final_ret_messages = None
+    
     for ret_messages in agent.run(messages):
         # `ret_messages` will contain all subsequent messages, consisting of interleaved assistant messages and tool responses
         response_plain_text = multimodal_typewriter_print(ret_messages, response_plain_text)
         last_response = ret_messages[-1]['content']
+        final_ret_messages = ret_messages
+        
+    print(ret_messages)
 
     # 5. 解析输出 (清洗 Markdown 代码块标记)
     try:
@@ -146,10 +152,10 @@ llm_cfg = {
     'model_type': 'qwenvl_oai',
     'model': 'qwen3-vl-plus',
     # 'model': 'gemini-3-pro-preview',
-    # 'model_server': 'http://35.220.164.252:3888/v1', 
-    # 'api_key': 'sk-ohsIxhcDUF0xwqqmFl1L1niRtEOD9LnvxFGjtjakXennNTzI', # REPLACE WITH YOUR ACTUAL KEY
-    'model_server': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    'api_key': 'sk-1e374badf38a432c86886917fd8a867a',
+    'model_server': 'http://35.220.164.252:3888/v1', 
+    'api_key': 'sk-6TGzZJkJ5HfZKwnrS1A1pMb1lH5D7EDfSVC6USq24aN2JaaR', # REPLACE WITH YOUR ACTUAL KEY
+    # 'model_server': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    # 'api_key': 'sk-1e374badf38a432c86886917fd8a867a',
     'generate_cfg': {
         'top_p': 0.8, 
         'top_k': 20,

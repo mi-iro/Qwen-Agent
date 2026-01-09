@@ -34,6 +34,7 @@ from .tir_agent import TIRMathAgent
 from .user_agent import UserAgent
 from .virtual_memory_agent import VirtualMemoryAgent
 from .write_from_scratch import WriteFromScratch
+from .visual_evidence_extractor import VisualEvidenceExtractor
 
 __all__ = [
     'Agent',

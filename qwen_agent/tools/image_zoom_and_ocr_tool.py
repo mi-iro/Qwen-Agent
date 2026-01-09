@@ -82,6 +82,7 @@ class ImageZoomOCRTool(BaseToolWithFileAccess):
         # 注意：实际部署时，这些配置（如 model_path, server_url）应从 cfg 或环境变量读取
         self.mineru_model_path = "/root/checkpoints/MinerU2.5-2509-1.2B/"
         self.mineru_server_url = "http://10.102.250.36:8000/"
+        # self.mineru_server_url = "http://127.0.0.1:8000/"
         self.mineru_client = None
 
     def _get_mineru_client(self):
