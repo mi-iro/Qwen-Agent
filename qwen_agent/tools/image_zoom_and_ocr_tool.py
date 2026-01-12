@@ -325,6 +325,11 @@ class ImageZoomOCRTool(BaseToolWithFileAccess):
                         time.sleep(1)
 
                 if raw_mineru_result:
+                    if len(raw_mineru_result) == 1 and raw_mineru_result[0].get('type') == 'image':
+                        # 对输入区域调用OCR
+                        ocr_text_output = client.content_extract(img_for_ocr)
+                        raw_mineru_result[0]['content'] = ocr_text_output
+                    
                     transformed_results = []
                     for item in raw_mineru_result:
                         raw_bbox = item.get('bbox', [])
@@ -374,144 +379,3 @@ class ImageZoomOCRTool(BaseToolWithFileAccess):
             obs = f'Tool Execution Error: {str(e)}'
             return [ContentItem(text=obs)]
 
-    # def call(self, params: Union[str, dict], **kwargs) -> List[ContentItem]:
-    #     params = self._verify_json_format_args(params)
-
-    #     img_idx = params.get('img_idx',0)
-    #     bbox = params['bbox']
-    #     angle = params.get('angle', 0) # 获取旋转角度
-    #     do_ocr = params.get('do_ocr', False) # 是否进行 OCR
-        
-    #     images = extract_images_from_messages(kwargs.get('messages', []))
-    #     os.makedirs(self.work_dir, exist_ok=True)
-
-    #     try:
-    #         # open image, currently only support the first image
-    #         image_arg = images[img_idx]
-    #         if image_arg.startswith('file://'):
-    #             image_arg = image_arg[len('file://'):]
-
-    #         if image_arg.startswith('http'):
-    #             response = requests.get(image_arg)
-    #             response.raise_for_status()
-    #             image = Image.open(BytesIO(response.content))
-    #         elif os.path.exists(image_arg):
-    #             image = Image.open(image_arg)
-    #         else:
-    #             image = Image.open(os.path.join(self.work_dir, image_arg))
-    #     except Exception as e:
-    #         logger.warning(f'{e}')
-    #         return [ContentItem(text=f'Error: Invalid input image {images}')]
-
-    #     try:
-    #         # 1. Validate and potentially resize bbox
-    #         img_width, img_height = image.size
-    #         rel_x1, rel_y1, rel_x2, rel_y2 = bbox
-    #         abs_x1, abs_y1, abs_x2, abs_y2 = rel_x1 / 1000. * img_width, rel_y1 / 1000. * img_height, rel_x2 / 1000. * img_width, rel_y2 / 1000. * img_height
-
-    #         validated_bbox = self.maybe_resize_bbox(abs_x1, abs_y1, abs_x2, abs_y2, img_width, img_height)
-    #         left, top, right, bottom = validated_bbox
-            
-    #         # 记录 Crop 的尺寸和偏移，用于反算
-    #         crop_offset = (left, top)
-    #         crop_size = (right - left, bottom - top)
-
-    #         # 2. Crop the image
-    #         cropped_image = image.crop((left, top, right, bottom))
-
-    #         # 3. Rotate the image
-    #         # expand=True 会自动调整画布大小以容纳旋转后的图像
-    #         rotated_image = cropped_image.rotate(angle, expand=True)
-    #         rotated_size = rotated_image.size
-
-    #         # 4. Resize according to smart_resize logic
-    #         new_w, new_h = self.smart_resize(rotated_size[1], rotated_size[0], factor=32, min_pixels=256 * 32 * 32)
-    #         final_image = rotated_image.resize((new_w, new_h), resample=Image.BICUBIC)
-    #         final_size = final_image.size
-
-    #         # 保存处理后的图像
-    #         output_filename = f'{uuid.uuid4()}.png'
-    #         output_path = os.path.abspath(os.path.join(self.work_dir, output_filename))
-    #         final_image.save(output_path)
-            
-    #         if not do_ocr:
-    #             return [ContentItem(image=output_path)]
-
-    #         # 5. 调用 MinerU 进行 OCR
-    #         mineru_result = []
-    #         ocr_text_output = ""
-            
-    #         try:
-    #             client = self._get_mineru_client()
-    #             # 重试逻辑
-    #             max_retries = 3
-    #             raw_mineru_result = None
-                
-    #             # Image.open on the saved path or pass the PIL object directly if supported
-    #             # 为了保险起见，重新加载以确保格式一致
-    #             img_for_ocr = Image.open(output_path).convert("RGB")
-
-    #             for attempt in range(max_retries):
-    #                 try:
-    #                     raw_mineru_result = client.two_step_extract(img_for_ocr)
-    #                     if raw_mineru_result:
-    #                         break
-    #                 except Exception as e:
-    #                     if attempt == max_retries - 1:
-    #                         logger.error(f"MinerU execution failed after {max_retries} attempts: {e}")
-    #                     time.sleep(1)
-                
-    #             if raw_mineru_result:
-    #                 # 6. 处理 MinerU 结果，进行坐标反算
-    #                 transformed_results = []
-    #                 for item in raw_mineru_result:
-    #                     # MinerU 返回的 bbox 通常是 [x1, y1, x2, y2] 0-1 之间或 0-1000
-    #                     # 根据用户提供的示例代码: item['bbox'] = [int(cord*1000) for cord in item['bbox']]
-    #                     # 假设 MinerU 返回的是 0-1 浮点数，我们需要先转为 0-1000
-                        
-    #                     raw_bbox = item.get('bbox', [])
-    #                     if not raw_bbox: 
-    #                         continue
-                            
-    #                     # 确保是 0-1000 格式
-    #                     # 假设 raw 是 0-1 float
-    #                     if all(0 <= x <= 1 for x in raw_bbox):
-    #                         ocr_bbox_1000 = [x * 1000 for x in raw_bbox]
-    #                     else:
-    #                         # 假设已经是 1000 或像素，这里按用户示例假定输入流处理为 0-1000
-    #                         ocr_bbox_1000 = raw_bbox
-
-    #                     x1, y1, x2, y2 = ocr_bbox_1000
-                        
-    #                     # 坐标转换：从 Processed Image (0-1000) -> Original Image (0-1000)
-    #                     orig_x1, orig_y1 = self.map_point_back(x1, y1, final_size, rotated_size, crop_size, crop_offset, angle, image.size)
-    #                     orig_x2, orig_y2 = self.map_point_back(x2, y2, final_size, rotated_size, crop_size, crop_offset, angle, image.size)
-
-    #                     new_item = item.copy()
-    #                     # 修正 BBox 顺序，因为旋转可能导致 x1 > x2
-    #                     new_item['bbox'] = [
-    #                         min(orig_x1, orig_x2), 
-    #                         min(orig_y1, orig_y2), 
-    #                         max(orig_x1, orig_x2), 
-    #                         max(orig_y1, orig_y2)
-    #                     ]
-    #                     transformed_results.append(new_item)
-                    
-    #                 mineru_result = transformed_results
-    #                 ocr_text_output = json.dumps(mineru_result, ensure_ascii=False)
-    #             else:
-    #                 ocr_text_output = "MinerU returned empty result."
-
-    #         except Exception as e:
-    #             logger.error(f"MinerU Processing Error: {e}")
-    #             ocr_text_output = f"MinerU Error: {str(e)}"
-
-    #         # 返回图片路径和 OCR 结果
-    #         return [
-    #             ContentItem(image=output_path),
-    #             ContentItem(text=f"OCR Result (Mapped to original coords): {ocr_text_output}")
-    #         ]
-
-    #     except Exception as e:
-    #         obs = f'Tool Execution Error {str(e)}'
-    #         return [ContentItem(text=obs)]
