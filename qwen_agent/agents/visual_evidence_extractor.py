@@ -160,12 +160,16 @@ def run_demo():
     # BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1" 
     API_KEY = "sk-6TGzZJkJ5HfZKwnrS1A1pMb1lH5D7EDfSVC6USq24aN2JaaR" # Replace/Load from env
     BASE_URL = "http://35.220.164.252:3888/v1"
+    MODEL_NAME = "qwen3-vl-plus"
+    # API_KEY = "sk-123456" # Replace/Load from env
+    # BASE_URL = "http://localhost:8001/v1"
+    # MODEL_NAME = "MinerU-Agent"
     IMAGE_PATH = "/root/LMUData/images/MMLongBench_DOC/0b85477387a9d0cc33fca0f4becaa0e5_1.jpg"
     LAYOUT_PATH = "/root/LMUData/parsed_results/MMLongBench_DOC/0b85477387a9d0cc33fca0f4becaa0e5_1.json"
     USER_QUERY = "Who is editor of the news? At least three tool calls!"
 
     # 2. Initialize Extractor
-    extractor = VisualEvidenceExtractor(api_key=API_KEY, base_url=BASE_URL)
+    extractor = VisualEvidenceExtractor(api_key=API_KEY, base_url=BASE_URL, model=MODEL_NAME)
 
     # 3. Load Layout (Optional, but recommended)
     layout_data = []
