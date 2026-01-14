@@ -1,4 +1,4 @@
-system_prompt = """
+infer_system_prompt = """
 You are an advanced Visual Document Analysis Agent capable of precise evidence extraction from document images. Your goal is to answer user queries by locating, reading, and extracting specific information from a page.
 
 ### Your Capabilities & Tools
@@ -52,6 +52,22 @@ If the page image is not relevant, return an empty list.
 Let us think step by step, using tool calling for better understanding of details!
 """
 
+distill_system_prompt = """
+# Tools
+
+You may call one or more functions to assist with the user query.
+
+You are provided with function signatures within <tools></tools> XML tags:
+<tools>
+{"type": "function", "function": {"name": "image_zoom_and_ocr_tool", "description": "Zoom in on a specific region of an image by cropping it based on a bounding box (bbox), optionally rotate it or perform OCR.", "parameters": {"type": "object", "properties": {"label": {"type": "string", "description": "The name or label of the object in the specified bounding box"}, "bbox": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4, "description": "The bbox specified as [x1, y1, x2, y2] in 0-1000 coordinates, relative to the page image from the user."}, "angle": {"type": "number", "description": "The angle to rotate the image (counter-clockwise) after cropping. Default is 0.", "default": 0}, "do_ocr": {"type": "boolean", "description": "Whether OCR the processed image. OCR returns results with bboxes relative to the page image from user. Default is False.", "default": false}}, "required": ["bbox", "label"]}}}
+</tools>
+
+For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
+<tool_call>
+{"name": <function-name>, "arguments": <args-json-object>}
+</tool_call>
+"""
+
 import json
 import re
 import os
@@ -60,7 +76,7 @@ from qwen_agent.agents import Assistant
 from qwen_agent.utils.output_beautify import multimodal_typewriter_print
 
 class VisualEvidenceExtractor:
-    def __init__(self, api_key: str, model: str = 'qwen3-vl-plus', base_url: str = 'https://dashscope.aliyuncs.com/compatible-mode/v1'):
+    def __init__(self, api_key: str, model: str = 'qwen3-vl-plus', base_url: str = 'https://dashscope.aliyuncs.com/compatible-mode/v1', mode: str = 'distill'):
         """
         Initializes the VLM Agent.
         
@@ -82,7 +98,14 @@ class VisualEvidenceExtractor:
         }
         # Assuming 'image_zoom_and_ocr_tool' is available in your environment's qwen_agent registry
         self.tools = ['image_zoom_and_ocr_tool']
-        self.agent = Assistant(llm=self.llm_cfg, function_list=self.tools, system_message=system_prompt)
+        self.mode = mode
+        if self.mode == 'infer':
+            self.agent = Assistant(llm=self.llm_cfg, function_list=self.tools, system_message=infer_system_prompt)
+        elif self.mode == 'distill':
+            self.agent = Assistant(llm=self.llm_cfg, function_list=self.tools, system_message=distill_system_prompt)
+        else:
+            raise ValueError(f"Invalid mode: {self.mode}. Please choose 'infer' or 'distill'.")
+            
         # self.agent.llm.use_raw_api=True
 
     def _prepare_layout_context(self, layout_data: List[Dict]) -> str:
@@ -143,17 +166,52 @@ class VisualEvidenceExtractor:
         layout_context = self._prepare_layout_context(layout_data) if layout_data else "Not provided."
 
         # 2. Construct Message Payload
-        messages = [
-            {"role": "user", "content": [
-                {"image": image_path},
-                {"text": query},
-            ]}
-        ]
+        distill_prompt = f"""
+The input includes:
+1. The page image of a visual document.
+2. The user's query intent.
+
+Please execute the following steps:
+1. **Semantic Matching**: Carefully observe the image to determine if the page content contains evidence information relevant to the user's query. If it is irrelevant, return an empty list.
+2. **Precise Localization**: If relevant, extract the complete chain of visual evidence that helps to answer the query (text blocks, tables, charts or image regions).
+3. **Speical Notes**: The page image may contain several evidence pieces. Pay attention to tables, charts and images, as they could also contain evidence.
+
+User Query: '{query}'
+
+Finally, output the list of relevant evidence in the following format, return an empty list if not relevant:
+```json
+[
+{{
+"evidence": "<self-contained content, understandable without page context>",
+"bbox": [xmin, ymin, xmax, ymax]  # 0-1000 normalized coordinates
+}},
+...
+]
+```
+
+Let us think step by step, using tool calling for better understanding of details!
+        """
+        
+        if self.mode == 'infer':
+            messages = [
+                {"role": "user", "content": [
+                    {"image": image_path},
+                    {"text": query}
+                ]}
+            ]
+        elif self.mode == 'distill':
+            messages = [
+                {"role": "user", "content": [
+                    {"image": image_path},
+                    {"text": distill_prompt}
+                ]}
+            ]
 
         # 3. Run Agent
         final_messages = [] # Store the full history here
         last_response_content = ""
         response_plain_text = ''
+        last_response_role = "assistant"
         
         # Create a generator loop to handle tool calls internally
         for ret_messages in self.agent.run(messages):
@@ -162,6 +220,11 @@ class VisualEvidenceExtractor:
             # Optional: Print real-time streaming output
             # response_plain_text = multimodal_typewriter_print(ret_messages, response_plain_text)
             last_response_content = ret_messages[-1]['content']
+            last_response_role = ret_messages[-1]['role']
+            
+        if last_response_role != "assistant":
+            print("Warning: The last response is not from the assistant.")
+            return [], final_messages
 
         # 4. Handle Agent Output (Text vs List of Content)
         full_text = ""
@@ -255,9 +318,10 @@ def run_demo():
     # API_KEY = "sk-123456" # Replace/Load from env
     # BASE_URL = "http://localhost:8001/v1"
     # MODEL_NAME = "MinerU-Agent"
-    IMAGE_PATH = "/mnt/shared-storage-user/mineru2-shared/madongsheng/dataset/vidore_v3_computer_science/sample_results_images/869.png"
+    # IMAGE_PATH = "/mnt/shared-storage-user/mineru2-shared/madongsheng/dataset/vidore_v3_computer_science/sample_results_images/869.png"
+    IMAGE_PATH = "/root/LMUData/images/MMLongBench_DOC/0b85477387a9d0cc33fca0f4becaa0e5_1.jpg"
     LAYOUT_PATH = "/root/LMUData/parsed_results/MMLongBench_DOC/0b85477387a9d0cc33fca0f4becaa0e5_1.json"
-    USER_QUERY = "impact of usability testing on user adoption in software development"
+    USER_QUERY = "Who is editor of the news?"
 
     # 2. Initialize Extractor
     extractor = VisualEvidenceExtractor(api_key=API_KEY, base_url=BASE_URL, model=MODEL_NAME)
@@ -287,12 +351,23 @@ def run_demo():
         if evidence:
             output_viz_path = "result_visualization.png"
             visualize_evidence(IMAGE_PATH, evidence, output_viz_path)
+            print(f"Visualization saved to: {output_viz_path}")
         else:
             print("No evidence found to visualize.")
 
-        # print("\n--- Full Agent History (Debugging) ---")
-        # for msg in full_history:
-        #     print(f"\n[{msg['role'].upper()}] {msg['content']}")
+        print("\n--- Full Agent History (Debugging) ---")
+        for msg in full_history:
+            print(f"\n[{msg['role'].upper()}]")
+            # Handle list content (common in multimodal messages)
+            content = msg['content']
+            if isinstance(content, list):
+                print(json.dumps(content, ensure_ascii=False))
+            else:
+                print(content)
+            
+            # Print function calls if present
+            if 'function_call' in msg:
+                print(f"Function Call: {msg['function_call']}")
             
     else:
         print(f"Image not found at {IMAGE_PATH}")
