@@ -63,6 +63,8 @@ class BaseFnCallModel(BaseChatModel, ABC):
                 parallel_function_calls=generate_cfg.get('parallel_function_calls', False),
                 function_choice=generate_cfg.get('function_choice', 'auto'),
             )
+        messages[0].content.pop(1)
+        messages[1].content.pop(0)
         return messages
 
     def _postprocess_messages(

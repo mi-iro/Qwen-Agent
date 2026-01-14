@@ -1,3 +1,57 @@
+system_prompt = """
+You are an advanced Visual Document Analysis Agent capable of precise evidence extraction from document images. Your goal is to answer user queries by locating, reading, and extracting specific information from a page.
+
+### Your Capabilities & Tools
+You have access to a powerful tool named **`image_zoom_and_ocr_tool`**.
+
+- **Functionality**:  
+  Crop a specific region of the image, optionally rotate it, and perform OCR on the cropped region.
+
+- **When to use**:  
+  - Always use this tool when the user asks for **specific text, numbers, names, dates, tables, or factual details** from the page.
+  - Do NOT rely solely on the global low-resolution image when reading dense or small text.
+  - If the target text is rotated, estimate and set the `angle` parameter before OCR.
+
+- **Parameters**:
+  - `label`: A short description of what you are looking for.
+  - `bbox`: `[xmin, ymin, xmax, ymax]` in **0–1000 normalized coordinates**, relative to the original page.
+  - `angle`: Rotation angle (counter-clockwise) applied after cropping. Default is `0`.
+  - `do_ocr`: Whether to perform OCR on the cropped image.
+
+### Tool Usage Example
+Use the tool strictly in the following format:
+
+<tool_call>
+{"name": "image_zoom_and_ocr_tool", "arguments": {"label": "<A short description of what you are looking for>", "bbox": [xmin, ymin, xmax, ymax], "angle":<0/90/180/270>, "do_ocr": <true/false>}}
+</tool_call>
+
+### Your Input and Task
+The input includes:
+1. One page image of a visual document.
+2. The user's query intent.
+
+Please execute the following steps:
+1. **Semantic Matching**: Carefully observe the image to determine if the page content contains evidence information relevant to the user's query. If it is irrelevant, return an empty list.
+2. **Precise Localization**: If relevant, extract the complete chain of visual evidence that helps to answer the query (text blocks, tables, charts or image regions).
+3. **Speical Notes**: The page image may contain several evidence pieces. Pay attention to tables, charts and images, as they could also contain evidence.
+
+### Output Format
+After gathering information, output the list of relevant evidence in the following JSON format.  
+If the page image is not relevant, return an empty list.
+
+```json
+[
+  {
+    "evidence": "<self-contained content, understandable without page context>",
+    "bbox": [xmin, ymin, xmax, ymax] # 0-1000 normalized coordinates 
+  }
+  ...
+]
+```
+
+Let us think step by step, using tool calling for better understanding of details!
+"""
+
 import json
 import re
 import os
@@ -28,7 +82,8 @@ class VisualEvidenceExtractor:
         }
         # Assuming 'image_zoom_and_ocr_tool' is available in your environment's qwen_agent registry
         self.tools = ['image_zoom_and_ocr_tool']
-        self.agent = Assistant(llm=self.llm_cfg, function_list=self.tools, system_message='')
+        self.agent = Assistant(llm=self.llm_cfg, function_list=self.tools, system_message=system_prompt)
+        # self.agent.llm.use_raw_api=True
 
     def _prepare_layout_context(self, layout_data: List[Dict]) -> str:
         """Helper to simplify and stringify MinerU layout data."""
@@ -87,46 +142,15 @@ class VisualEvidenceExtractor:
         # 1. Prepare Layout Context
         layout_context = self._prepare_layout_context(layout_data) if layout_data else "Not provided."
 
-        # 2. Construct Prompt
-        # 2. Query-agnostic layout detection results (MinerU format). Note: This serves only as a reference and may contain noise.
-        # 3. **BBox Correction**: If the MinerU bbox is too large, too small, or shifted, generate a new, more precise bbox based on the actual visual content (0-1000 normalized coordinates [xmin, ymin, xmax, ymax]).
-        # MinerU layout reference:
-        # {layout_context}
-        prompt_text = f"""
-        The input includes:
-        1. The page image of a visual document.
-        2. The user's query intent.
-
-        Please execute the following steps:
-        1. **Semantic Matching**: Carefully observe the image to determine if the page content contains evidence information relevant to the user's query. If it is irrelevant, return an empty list.
-        2. **Precise Localization**: If relevant, extract the complete chain of visual evidence that helps to answer the query (text blocks, tables, charts or image regions).
-        3. **Speical Notes**: The page image may contain several evidence pieces. Pay attention to tables, charts and images, as they could also contain evidence.
-
-        User Query: '{query}'
-
-        Finally, output the list of relevant evidence in the following format, return an empty list if not relevant:
-        ```json
-        [
-        {{
-            "evidence": "<self-contained content, understandable without page context>",
-            "bbox": [xmin, ymin, xmax, ymax]  # 0-1000 normalized coordinates
-        }},
-        ...
-        ]
-        ```
-        
-        Let us think step by step, using tool calling for better understanding of details!
-        """
-
-        # 3. Construct Message Payload
+        # 2. Construct Message Payload
         messages = [
             {"role": "user", "content": [
                 {"image": image_path},
-                {"text": prompt_text}
+                {"text": query},
             ]}
         ]
 
-        # 4. Run Agent
+        # 3. Run Agent
         final_messages = [] # Store the full history here
         last_response_content = ""
         response_plain_text = ''
@@ -139,7 +163,7 @@ class VisualEvidenceExtractor:
             # response_plain_text = multimodal_typewriter_print(ret_messages, response_plain_text)
             last_response_content = ret_messages[-1]['content']
 
-        # 5. Handle Agent Output (Text vs List of Content)
+        # 4. Handle Agent Output (Text vs List of Content)
         full_text = ""
         if isinstance(last_response_content, str):
             full_text = last_response_content
@@ -147,12 +171,79 @@ class VisualEvidenceExtractor:
             # Extract text parts from the list content
             full_text = "".join([item['text'] for item in last_response_content if 'text' in item])
 
-        # 6. Parse and Return Both Results
+        # 5. Parse and Return Both Results
         parsed_result = self._parse_agent_response(full_text)
         
         return parsed_result, final_messages
 
-# --- Usage Example ---
+from PIL import Image, ImageDraw, ImageFont
+
+def visualize_evidence(image_path: str, evidence_list: List[Dict], output_path: str = "output_viz.png"):
+    """
+    在图像上绘制 Agent 提取的 Evidence BBox。
+    """
+    if not os.path.exists(image_path):
+        print(f"Image not found: {image_path}")
+        return
+
+    try:
+        # 1. 打开图片
+        image = Image.open(image_path).convert("RGB")
+        draw = ImageDraw.Draw(image)
+        width, height = image.size
+
+        # 尝试加载字体，如果失败则使用默认字体
+        try:
+            # 尝试加载常见字体，字号根据图片大小自适应
+            font_size = max(15, int(height / 60))
+            font = ImageFont.truetype("arial.ttf", font_size)
+        except IOError:
+            font = ImageFont.load_default()
+
+        # 2. 遍历证据列表并绘图
+        for i, item in enumerate(evidence_list):
+            bbox = item.get("bbox", [])
+            text_content = item.get("evidence", "")
+
+            # 检查 bbox 格式 [xmin, ymin, xmax, ymax]
+            if bbox and len(bbox) == 4:
+                # 归一化坐标 (0-1000) 转 绝对像素坐标
+                x1 = bbox[0] / 1000 * width
+                y1 = bbox[1] / 1000 * height
+                x2 = bbox[2] / 1000 * width
+                y2 = bbox[3] / 1000 * height
+
+                # 生成随机颜色以区分不同的证据块，或者统一使用红色
+                color = "red" 
+                
+                # 绘制矩形框 (Width 控制线条粗细)
+                line_width = max(3, int(width / 300))
+                draw.rectangle([x1, y1, x2, y2], outline=color, width=line_width)
+
+                # 准备标签文本 (索引 + 截断的内容)
+                label = f"[{i+1}] {text_content[:30]}..." if len(text_content) > 30 else f"[{i+1}] {text_content}"
+                
+                # 计算文本背景框大小
+                text_bbox = draw.textbbox((x1, y1), label, font=font)
+                # 调整文本位置，防止画出图片外
+                text_loc = [x1, y1 - (text_bbox[3] - text_bbox[1])]
+                if text_loc[1] < 0: 
+                    text_loc = [x1, y2] # 如果上方没空间，就画在框下面
+
+                # 绘制文本背景和文本
+                draw.rectangle(draw.textbbox(tuple(text_loc), label, font=font), fill=color)
+                draw.text(text_loc, label, fill="white", font=font)
+
+        # 3. 保存图片
+        image.save(output_path)
+        print(f"Visualization saved to: {output_path}")
+    
+    except Exception as e:
+        print(f"Error during visualization: {e}")
+
+# ==========================================
+# 修改后的 run_demo
+# ==========================================
 
 def run_demo():
     # 1. Configuration
@@ -164,14 +255,14 @@ def run_demo():
     # API_KEY = "sk-123456" # Replace/Load from env
     # BASE_URL = "http://localhost:8001/v1"
     # MODEL_NAME = "MinerU-Agent"
-    IMAGE_PATH = "/root/LMUData/images/MMLongBench_DOC/0b85477387a9d0cc33fca0f4becaa0e5_1.jpg"
+    IMAGE_PATH = "/mnt/shared-storage-user/mineru2-shared/madongsheng/dataset/vidore_v3_computer_science/sample_results_images/869.png"
     LAYOUT_PATH = "/root/LMUData/parsed_results/MMLongBench_DOC/0b85477387a9d0cc33fca0f4becaa0e5_1.json"
-    USER_QUERY = "Who is editor of the news? At least three tool calls!"
+    USER_QUERY = "impact of usability testing on user adoption in software development"
 
     # 2. Initialize Extractor
     extractor = VisualEvidenceExtractor(api_key=API_KEY, base_url=BASE_URL, model=MODEL_NAME)
 
-    # 3. Load Layout (Optional, but recommended)
+    # 3. Load Layout (Optional)
     layout_data = []
     if os.path.exists(LAYOUT_PATH):
         try:
@@ -184,26 +275,25 @@ def run_demo():
     if os.path.exists(IMAGE_PATH):
         print(f"Analyzing image for query: '{USER_QUERY}'...")
         
-        # Unpack both return values
+        # 获取结果
         evidence, full_history = extractor.extract_evidence(IMAGE_PATH, USER_QUERY, layout_data)
         
         print("\n--- Final Structured Evidence ---")
         print(json.dumps(evidence, indent=2, ensure_ascii=False))
 
-        print("\n--- Full Agent History (Debugging) ---")
-        # Print the last message or the whole history to see tool calls and reasoning
-        for msg in full_history:
-            print(f"\n[{msg['role'].upper()}]")
-            # Handle list content (common in multimodal messages)
-            content = msg['content']
-            if isinstance(content, list):
-                print(json.dumps(content, ensure_ascii=False))
-            else:
-                print(content)
+        # -------------------------------------------------
+        # 新增：调用可视化函数
+        # -------------------------------------------------
+        if evidence:
+            output_viz_path = "result_visualization.png"
+            visualize_evidence(IMAGE_PATH, evidence, output_viz_path)
+        else:
+            print("No evidence found to visualize.")
+
+        # print("\n--- Full Agent History (Debugging) ---")
+        # for msg in full_history:
+        #     print(f"\n[{msg['role'].upper()}] {msg['content']}")
             
-            # Print function calls if present
-            if 'function_call' in msg:
-                print(f"Function Call: {msg['function_call']}")
     else:
         print(f"Image not found at {IMAGE_PATH}")
 
