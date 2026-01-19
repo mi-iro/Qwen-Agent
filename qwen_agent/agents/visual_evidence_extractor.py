@@ -26,7 +26,7 @@ Use the tool strictly in the following format:
 </tool_call>
 
 ### Your Input and Task
-The input includes:
+The user input includes:
 1. One page image of a visual document.
 2. The user's query intent.
 
@@ -68,6 +68,23 @@ For each function call, return a json object with function name and arguments wi
 </tool_call>
 """
 
+# distill_system_prompt = """
+# # Tools
+
+# You may call one or more functions to assist with the user query.
+
+# You are provided with function signatures within <tools></tools> XML tags:
+# <tools>
+# {"type": "function", "function": {"name": "image_layout_detection_tool", "description": "Detect the layout of a specific region in an image by cropping it based on a bounding box (bbox). Returns the image region and a list of detected layout elements.", "parameters": {"type": "object", "properties": {"label": {"type": "string", "description": "The name or label of the object in the specified bounding box"}, "bbox": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4, "description": "The bbox specified as [x1, y1, x2, y2] in 0-1000 coordinates, relative to the page image from the user."}, "angle": {"type": "number", "description": "The angle to rotate the image (counter-clockwise) after cropping. Default is 0.", "default": 0}}, "required": ["bbox", "label"]}}}
+# {"type": "function", "function": {"name": "image_ocr_tool", "description": "Recognize content (e.g., text, formula, table) within a specific region of an image based on the element type.", "parameters": {"type": "object", "properties": {"label": {"type": "string", "description": "The name or label of the object in the specified bounding box"}, "bbox": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4, "description": "The bbox specified as [x1, y1, x2, y2] in 0-1000 coordinates, relative to the page image from the user."}, "angle": {"type": "number", "description": "The angle to rotate the image (counter-clockwise) after cropping. Default is 0.", "default": 0}, "element_type": {"type": "string", "description": "The type of element to recognize (e.g., \"text\", \"formula\", \"table\"). Default is \"text\".", "default": "text", "enum": ["text", "formula", "table"]}}, "required": ["bbox", "label"]}}}
+# </tools>
+
+# For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
+# <tool_call>
+# {"name": <function-name>, "arguments": <args-json-object>}
+# </tool_call>
+# """
+
 import json
 import re
 import os
@@ -97,6 +114,7 @@ class VisualEvidenceExtractor:
             }
         }
         # Assuming 'image_zoom_and_ocr_tool' is available in your environment's qwen_agent registry
+        # self.tools = ['image_layout_detection_tool','image_ocr_tool']
         self.tools = ['image_zoom_and_ocr_tool']
         self.mode = mode
         if self.mode == 'infer':
